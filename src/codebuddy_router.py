@@ -61,6 +61,7 @@ class SecurityConfig:
 
 # --- HTTP 客户端配置 ---
 HTTP_CLIENT_CONFIG = {
+    "trust_env": False,
     "verify": SecurityConfig.get_ssl_verify(),
     "timeout": httpx.Timeout(300.0, connect=30.0, read=300.0),
     "limits": httpx.Limits(max_keepalive_connections=20, max_connections=100)
@@ -473,7 +474,7 @@ class CodeBuddyStreamService:
                         # 检查是否结束
                         if '[DONE]' in line:
                             
-                            yield line + '\n'
+                            yield line.rstrip('\r\n') + '\n\n'
                             return
                         
                         # 解析SSE数据
@@ -486,10 +487,10 @@ class CodeBuddyStreamService:
                             
                             # 重新格式化为SSE格式并发送
                             converted_line = f"data: {json.dumps(converted_chunk, ensure_ascii=False)}"
-                            yield converted_line + '\n'
+                            yield converted_line + '\n\n'
                         else:
                             # 非数据行直接转发
-                            yield line + '\n'
+                            yield line.rstrip('\r\n') + '\n\n'
                 
                 # 处理缓冲区中剩余的数据
                 if buffer.strip():
@@ -499,9 +500,9 @@ class CodeBuddyStreamService:
                             chunk_data, tool_call_index_map
                         )
                         converted_line = f"data: {json.dumps(converted_chunk, ensure_ascii=False)}"
-                        yield converted_line + '\n'
+                        yield converted_line + '\n\n'
                     else:
-                        yield buffer + '\n'
+                        yield buffer.rstrip('\r\n') + '\n\n'
         
         async def stream_with_retry():
             async for chunk in self.connection_manager.stream_with_retry(stream_core):

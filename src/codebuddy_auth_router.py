@@ -9,6 +9,7 @@ import base64
 import json
 import uuid
 import time
+from urllib.parse import urlsplit, urlunsplit
 from typing import Dict, Any, Optional
 from fastapi.responses import JSONResponse
 from fastapi import APIRouter, HTTPException, Depends, Body
@@ -20,7 +21,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
-CODEBUDDY_BASE_URL = 'https://www.codebuddy.ai'
+CODEBUDDY_WEB_DOMAIN = 'www.codebuddy.cn'
+CODEBUDDY_BASE_URL = f'https://{CODEBUDDY_WEB_DOMAIN}'
 CODEBUDDY_AUTH_TOKEN_ENDPOINT = f'{CODEBUDDY_BASE_URL}/v2/plugin/auth/token'
 CODEBUDDY_AUTH_STATE_ENDPOINT = f'{CODEBUDDY_BASE_URL}/v2/plugin/auth/state'
 _last_auth_state: Optional[str] = None
@@ -60,18 +62,25 @@ def generate_auth_state() -> str:
     random_part = secrets.token_hex(16)
     return f"{random_part}_{timestamp}"
 
+def normalize_codebuddy_url(url: str) -> str:
+    """将返回的认证链接标准化为当前配置的 CodeBuddy 域名。"""
+    parsed = urlsplit(url)
+    if not parsed.netloc:
+        return url
+    return urlunsplit((parsed.scheme or 'https', CODEBUDDY_WEB_DOMAIN, parsed.path, parsed.query, parsed.fragment))
+
 def get_auth_start_headers() -> Dict[str, str]:
     """生成启动认证(/state)所需的请求头"""
     request_id = str(uuid.uuid4()).replace('-', '')
     return {
-        'Host': 'www.codebuddy.ai',
+        'Host': CODEBUDDY_WEB_DOMAIN,
         'Accept': 'application/json, text/plain, */*',
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
         'Connection': 'close',
         'X-Requested-With': 'XMLHttpRequest',
-        'X-Domain': 'www.codebuddy.ai',
+        'X-Domain': CODEBUDDY_WEB_DOMAIN,
         'X-No-Authorization': 'true',
         'X-No-User-Id': 'true',
         'X-No-Enterprise-Id': 'true',
@@ -86,7 +95,7 @@ def get_auth_poll_headers() -> Dict[str, str]:
     request_id = str(uuid.uuid4()).replace('-', '')
     span_id = secrets.token_hex(8)
     return {
-        'Host': 'www.codebuddy.ai',
+        'Host': CODEBUDDY_WEB_DOMAIN,
         'Accept': 'application/json, text/plain, */*',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
@@ -102,7 +111,7 @@ def get_auth_poll_headers() -> Dict[str, str]:
         'X-No-User-Id': 'true',
         'X-No-Enterprise-Id': 'true',
         'X-No-Department-Info': 'true',
-        'X-Domain': 'www.codebuddy.ai',
+        'X-Domain': CODEBUDDY_WEB_DOMAIN,
         'User-Agent': 'CLI/1.0.8 CodeBuddy/1.0.8',
         'X-Product': 'SaaS',
     }
@@ -131,6 +140,7 @@ async def start_codebuddy_auth() -> Dict[str, Any]:
                     auth_url = data.get('authUrl')
                     
                     if auth_state and auth_url:
+                        auth_url = normalize_codebuddy_url(auth_url)
                         global _last_auth_state
                         if _last_auth_state and auth_state == _last_auth_state:
                             logger.warning("上游返回的state与上一次相同，尝试重新获取新的state...")
@@ -148,7 +158,7 @@ async def start_codebuddy_auth() -> Dict[str, Any]:
                                         nu = data2.get('authUrl')
                                         if ns and nu and ns != auth_state:
                                             auth_state = ns
-                                            auth_url = nu
+                                            auth_url = normalize_codebuddy_url(nu)
                             except Exception:
                                 pass
                         token_endpoint = f"{CODEBUDDY_AUTH_TOKEN_ENDPOINT}?state={auth_state}"

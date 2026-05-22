@@ -204,7 +204,7 @@ codebuddy2api/
 | `CODEBUDDY_PASSWORD` | - | **(必需)** 访问此API服务的密码。 |
 | `CODEBUDDY_HOST` | `127.0.0.1` | 服务监听的主机地址。 |
 | `CODEBUDDY_PORT` | `8001` | 服务监听的端口。 |
-| `CODEBUDDY_API_ENDPOINT` | `https://www.codebuddy.ai`| CodeBuddy 官方 API 端点，一般无需修改。 |
+| `CODEBUDDY_API_ENDPOINT` | `https://www.codebuddy.cn`| CodeBuddy 官方 API 端点，一般无需修改。 |
 | `CODEBUDDY_CREDS_DIR` | `.codebuddy_creds` | 存放 CodeBuddy 认证凭证的目录。 |
 | `CODEBUDDY_LOG_LEVEL` | `INFO` | 日志级别，可选 `DEBUG`, `INFO`, `WARNING`, `ERROR`。 |
 | `CODEBUDDY_MODELS` | (列表) | 向客户端报告的可用模型列表，用逗号分隔。 |

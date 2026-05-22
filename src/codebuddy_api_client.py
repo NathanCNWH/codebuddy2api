@@ -5,11 +5,13 @@ import json
 import time
 import uuid
 import secrets
+import base64
 import httpx
 import logging
 from typing import Dict, Any, Optional, AsyncGenerator, List
 
 logger = logging.getLogger(__name__)
+CODEBUDDY_WEB_DOMAIN = 'www.codebuddy.cn'
 
 
 class CodeBuddyAPIClient:
@@ -180,7 +182,7 @@ class CodeBuddyAPIClient:
         优先使用传入的会话ID，如果未提供则随机生成。
         """
         headers = {
-            'Host': 'www.codebuddy.ai',
+            'Host': CODEBUDDY_WEB_DOMAIN,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
@@ -200,12 +202,41 @@ class CodeBuddyAPIClient:
             'X-IDE-Name': 'CLI',
             'X-IDE-Version': '1.0.7',
             'Authorization': f'Bearer {bearer_token}',
-            'X-Domain': 'www.codebuddy.ai',
+            'X-Domain': CODEBUDDY_WEB_DOMAIN,
             'User-Agent': 'CLI/1.0.7 CodeBuddy/1.0.7',
             'X-Product': 'SaaS',
             'X-User-Id': user_id or 'b5be3a67-237e-4ee6-9b9a-0b9ecd7b454b'
         }
+
+        enterprise_id = self.extract_enterprise_id_from_token(bearer_token)
+        if enterprise_id:
+            headers['X-Enterprise-Id'] = enterprise_id
+
         return headers
+
+    def extract_enterprise_id_from_token(self, bearer_token: str) -> Optional[str]:
+        """从JWT中提取企业ID，优先匹配 ent-member / ent-plugin-enabled 角色。"""
+        try:
+            token_parts = bearer_token.split('.')
+            if len(token_parts) != 3:
+                return None
+
+            payload = token_parts[1]
+            padding = '=' * (-len(payload) % 4)
+            decoded = base64.urlsafe_b64decode(payload + padding)
+            jwt_data = json.loads(decoded.decode('utf-8'))
+
+            roles = jwt_data.get('realm_access', {}).get('roles', [])
+            for role in roles:
+                if role.startswith('ent-member:'):
+                    return role.split(':', 1)[1]
+            for role in roles:
+                if role.startswith('ent-plugin-enabled:'):
+                    return role.split(':', 1)[1]
+        except Exception:
+            logger.debug("Failed to extract enterprise ID from bearer token", exc_info=True)
+
+        return None
 
 
 # 全局客户端实例

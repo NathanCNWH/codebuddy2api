@@ -137,6 +137,10 @@ dmypy.json
 # Or, if you have an example file, you can explicitly un-ignore it like this:
 # !.codebuddy_creds/credential.example.json
 
+# Runtime config & cached model list (may contain keys, generated at runtime)
+config/config.json
+config/available_models.json
+
 # IDE files
 .vscode/
 .idea/

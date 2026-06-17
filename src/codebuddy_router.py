@@ -18,13 +18,13 @@ from .codebuddy_api_client import codebuddy_api_client
 from .codebuddy_token_manager import codebuddy_token_manager
 from .usage_stats_manager import usage_stats_manager
 from .keyword_replacer import apply_keyword_replacement_to_system_message
+from .models_manager import models_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # --- 延迟加载配置常量 - 避免循环导入 ---
 _codebuddy_api_url: Optional[str] = None
-_available_models: Optional[List[str]] = None
 
 def get_codebuddy_api_url() -> str:
     """延迟加载 CodeBuddy API URL"""
@@ -35,12 +35,8 @@ def get_codebuddy_api_url() -> str:
     return _codebuddy_api_url
 
 def get_available_models_list() -> List[str]:
-    """延迟加载可用模型列表"""
-    global _available_models
-    if _available_models is None:
-        from config import get_available_models
-        _available_models = get_available_models()
-    return _available_models
+    """获取可用模型列表 - 优先返回探测结果，否则回退到配置的完整列表"""
+    return models_manager.get_available_models()
 
 # --- 配置管理 ---
 class SecurityConfig:
@@ -671,8 +667,10 @@ async def chat_completions(
 
 @router.get("/v1/models")
 async def list_v1_models(_token: str = Depends(authenticate)):
-    """获取CodeBuddy V1模型列表"""
+    """获取CodeBuddy V1模型列表 - 优先返回探测保存的可用列表"""
     try:
+        models = models_manager.get_available_models()
+        detail = models_manager.get_available_models_detail()
         return {
             "object": "list",
             "data": [{
@@ -680,12 +678,46 @@ async def list_v1_models(_token: str = Depends(authenticate)):
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "codebuddy"
-            } for model in get_available_models_list()]
+            } for model in models],
+            "probed": detail is not None,
+            "probe_info": detail
         }
         
     except Exception as e:
         logger.error(f"获取V1模型列表错误: {e}")
         raise HTTPException(status_code=500, detail="获取模型列表失败")
+
+@router.post("/v1/models/refresh")
+async def refresh_v1_models(_token: str = Depends(authenticate)):
+    """从 CodeBuddy 查询真实支持的模型列表。
+    
+    调用 https://copilot.tencent.com/v3/config 获取完整模型列表，
+    结果持久化保存。
+    """
+    try:
+        if models_manager.is_refreshing:
+            raise HTTPException(status_code=409, detail="已有查询任务在进行中，请稍后再试")
+
+        result = await models_manager.fetch_models_from_codebuddy()
+        return {
+            "message": f"查询完成：共 {result['total']} 个模型",
+            "result": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"刷新模型列表错误: {e}")
+        raise HTTPException(status_code=500, detail=f"刷新模型列表失败: {str(e)}")
+
+@router.delete("/v1/models/refresh")
+async def reset_v1_models(_token: str = Depends(authenticate)):
+    """清除已保存的查询结果，回退到配置的完整模型列表"""
+    try:
+        models_manager.clear_saved()
+        return {"message": "已清除查询结果，回退到配置的完整模型列表"}
+    except Exception as e:
+        logger.error(f"清除模型查询结果错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/v1/credentials", summary="List all available credentials")
 async def list_credentials(_token: str = Depends(authenticate)):

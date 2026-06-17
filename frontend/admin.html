@@ -1475,12 +1475,12 @@
                         <h3 class="card-title">聊天完成测试</h3>
                     </div>
                     <div class="form-group">
-                        <label class="form-label" for="testModel">模型</label>
+                        <label class="form-label" for="testModel">
+                            模型
+                            <span id="modelProbeInfo" style="font-weight: normal; font-size: 0.8rem; color: var(--secondary-color); margin-left: 0.5rem;"></span>
+                        </label>
                         <select id="testModel" class="form-input">
-                            <option value="deepseek-v4-pro">deepseek-v4-pro</option>
-                            <option value="auto-chat">auto-chat</option>
-                            <option value="claude-4.0">claude-4.0</option>
-                            <option value="gpt-5">gpt-5</option>
+                            <option value="">加载中...</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1764,6 +1764,8 @@
                 loadCredentials();
             } else if (tabId === 'settings') {
                 loadSettings();
+            } else if (tabId === 'api-test') {
+                loadTestModels();
             }
         }
 
@@ -2556,6 +2558,123 @@
             }
         }
 
+        // 加载可用模型到API测试下拉框
+        async function loadTestModels() {
+            const select = document.getElementById('testModel');
+            const probeInfo = document.getElementById('modelProbeInfo');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">加载中...</option>';
+            if (probeInfo) probeInfo.textContent = '';
+
+            try {
+                const response = await fetch('/codebuddy/v1/models', {
+                    headers: getAuthHeaders()
+                });
+                if (!response.ok) throw new Error('获取模型列表失败');
+                const data = await response.json();
+
+                const models = (data.data || []).map(m => m.id);
+                select.innerHTML = '';
+                if (models.length === 0) {
+                    select.innerHTML = '<option value="">无可用模型</option>';
+                    return;
+                }
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    select.appendChild(opt);
+                });
+
+                // 显示查询信息
+                if (data.probed && data.probe_info) {
+                    const info = data.probe_info;
+                    const probedAt = new Date(info.probed_at * 1000).toLocaleString('zh-CN');
+                    if (probeInfo) {
+                        probeInfo.textContent = `（上次查询: ${probedAt}，共 ${info.total} 个模型）`;
+                    }
+                } else {
+                    if (probeInfo) {
+                        probeInfo.textContent = '（未查询，显示配置的完整列表）';
+                    }
+                }
+            } catch (error) {
+                select.innerHTML = '<option value="">加载失败</option>';
+                showNotification(`加载模型列表失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 从 CodeBuddy 查询真实支持的模型列表
+        async function fetchModelsFromCodebuddy() {
+            const btn = document.getElementById('fetchModelsBtn');
+            const resultDiv = document.getElementById('modelsFetchResult');
+            const modelsInput = document.getElementById('setting_CODEBUDDY_MODELS');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 查询中...';
+            }
+            if (resultDiv) {
+                resultDiv.innerHTML = '<div style="color: var(--secondary-color);">⏳ 正在从 CodeBuddy 查询模型列表...</div>';
+            }
+
+            try {
+                const response = await fetch('/codebuddy/v1/models/refresh', {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || '查询失败');
+                }
+
+                showNotification(data.message || '模型查询完成', 'success');
+
+                const models = data.result.models || [];
+                const modelIds = models.map(m => m.id);
+
+                // 展示查询结果
+                if (resultDiv) {
+                    const probedAt = new Date(data.result.probed_at * 1000).toLocaleString('zh-CN');
+                    let html = `<div style="color: #27ae60; margin-bottom: 0.3rem;">✅ 查询成功（${probedAt}），共 ${models.length} 个模型：</div>`;
+                    html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 0.5rem;">';
+                    models.forEach(m => {
+                        const desc = m.description || '';
+                        const tags = [];
+                        if (m.supports_images) tags.push('图片');
+                        if (m.supports_tool_call) tags.push('工具');
+                        const tagStr = tags.length ? ` <span style="color: var(--secondary-color); font-size: 0.75rem;">[${tags.join(',')}]</span>` : '';
+                        html += `<div style="padding: 0.2rem 0; border-bottom: 1px solid var(--border-color-light);"><code style="color: var(--primary-color);">${m.id}</code> <span style="color: var(--text-color);">${m.name}</span>${tagStr}<br><span style="color: var(--secondary-color); font-size: 0.78rem;">${desc}</span></div>`;
+                    });
+                    html += '</div>';
+                    html += `<div style="margin-top: 0.5rem; color: var(--secondary-color);">可点击下方"填入配置"按钮将这些模型ID写入输入框，记得保存设置。</div>`;
+                    html += `<button class="btn btn-primary" style="margin-top: 0.5rem;" onclick="fillModelsToInput('${modelIds.join(',')}')"><i class="fas fa-check"></i> 填入配置</button>`;
+                    resultDiv.innerHTML = html;
+                }
+            } catch (error) {
+                showNotification(`查询模型失败: ${error.message}`, 'error');
+                if (resultDiv) {
+                    resultDiv.innerHTML = `<div style="color: #e74c3c;">❌ 查询失败: ${error.message}</div>`;
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> 从CodeBuddy查询';
+                }
+            }
+        }
+
+        // 将查询到的模型ID填入配置输入框
+        function fillModelsToInput(modelsStr) {
+            const input = document.getElementById('setting_CODEBUDDY_MODELS');
+            if (input) {
+                input.value = modelsStr;
+                showNotification('已填入，请点击"保存设置"使其生效', 'info');
+            }
+        }
+
         // API测试功能
         async function testAPI() {
             const model = document.getElementById('testModel').value;
@@ -3001,7 +3120,36 @@
                         input.value = settings[key] || '';
 
                         formGroup.appendChild(label);
-                        formGroup.appendChild(input);
+
+                        // 对 CODEBUDDY_MODELS 配置项特殊处理：加"从CodeBuddy查询"按钮
+                        if (key === 'CODEBUDDY_MODELS') {
+                            const wrapper = document.createElement('div');
+                            wrapper.style.display = 'flex';
+                            wrapper.style.gap = '0.5rem';
+                            wrapper.style.alignItems = 'flex-start';
+                            wrapper.appendChild(input);
+
+                            const btn = document.createElement('button');
+                            btn.className = 'btn btn-primary';
+                            btn.id = 'fetchModelsBtn';
+                            btn.style.flexShrink = '0';
+                            btn.style.whiteSpace = 'nowrap';
+                            btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> 从CodeBuddy查询';
+                            btn.onclick = function(e) { e.preventDefault(); fetchModelsFromCodebuddy(); };
+                            wrapper.appendChild(btn);
+
+                            formGroup.appendChild(wrapper);
+
+                            // 查询结果展示区域
+                            const resultDiv = document.createElement('div');
+                            resultDiv.id = 'modelsFetchResult';
+                            resultDiv.style.marginTop = '0.5rem';
+                            resultDiv.style.fontSize = '0.85rem';
+                            formGroup.appendChild(resultDiv);
+                        } else {
+                            formGroup.appendChild(input);
+                        }
+
                         settingsForm.appendChild(formGroup);
                     }
                 }

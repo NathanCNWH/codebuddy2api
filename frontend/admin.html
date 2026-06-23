@@ -1272,7 +1272,7 @@
                     </div>
 
                     <!-- API端点卡片 -->
-                    <div class="stat-card" onclick="copyApiEndpoint()" style="cursor: pointer;" title="点击复制API端点">
+                    <div class="stat-card" id="apiEndpointsCard">
                         <div class="stat-card-header">
                             <div class="stat-card-icon warning">
                                 <i class="fas fa-link"></i>
@@ -1281,10 +1281,9 @@
                                 <i class="fas fa-copy"></i>
                             </div>
                         </div>
-                        <div class="stat-value" id="apiEndpoint" style="font-size: 1.2rem; word-break: break-all;">-</div>
-                        <div class="stat-label">API 服务端点</div>
-                        <div class="stat-trend">
-                            <i class="fas fa-info-circle"></i> 点击复制链接
+                        <div class="stat-label" style="margin-top: 0.5rem;">API 服务端点</div>
+                        <div id="apiEndpointsList" style="margin-top: 0.5rem;">
+                            <!-- JS will populate three endpoints -->
                         </div>
                     </div>
 
@@ -1926,9 +1925,53 @@
                 document.getElementById('validCredentials').textContent = '0';
             }
 
-            // 设置API端点
-            const apiEndpoint = window.location.origin + '/codebuddy/v1';
-            document.getElementById('apiEndpoint').textContent = apiEndpoint;
+            // 设置API端点（三种格式）
+            const origin = window.location.origin;
+            const endpoints = [
+                {
+                    label: 'OpenAI Chat Completions',
+                    url: origin + '/codebuddy/v1',
+                    path: '/codebuddy/v1/chat/completions',
+                    icon: 'fas fa-comment-dots',
+                    color: 'var(--primary-color)'
+                },
+                {
+                    label: 'OpenAI Responses (Codex CLI)',
+                    url: origin,
+                    path: '/v1/responses',
+                    icon: 'fas fa-reply-all',
+                    color: '#9b59b6'
+                },
+                {
+                    label: 'Anthropic Messages (Claude)',
+                    url: origin,
+                    path: '/v1/messages',
+                    icon: 'fas fa-robot',
+                    color: '#e67e22'
+                }
+            ];
+            const listEl = document.getElementById('apiEndpointsList');
+            if (listEl) {
+                listEl.innerHTML = endpoints.map((ep, i) => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0; border-bottom: ${i < endpoints.length - 1 ? '1px solid var(--border-color-light)' : 'none'};">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <i class="${ep.icon}" style="color: ${ep.color}; font-size: 0.85rem;"></i>
+                                <span style="font-weight: 600; font-size: 0.82rem;">${ep.label}</span>
+                            </div>
+                            <div style="font-size: 0.72rem; color: var(--secondary-color); margin-top: 0.15rem;">
+                                base_url: <code>${ep.url}</code>
+                            </div>
+                            <div style="font-size: 0.72rem; color: var(--secondary-color); margin-top: 0.05rem;">
+                                路径: <code>${ep.path}</code>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; flex-shrink: 0; margin-left: 0.5rem;" onclick="copyEndpointText('${ep.url}')" title="复制 ${ep.url}">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
 
             // 加载使用统计
             try {
@@ -2006,30 +2049,29 @@
             // 显示刷新状态
             document.getElementById('totalCredentials').textContent = '-';
             updateServiceStatus('warning', '刷新中...');
-            document.getElementById('apiEndpoint').textContent = '-';
+            const listEl = document.getElementById('apiEndpointsList');
+            if (listEl) listEl.innerHTML = '<div style="color: var(--secondary-color); font-size: 0.8rem;">加载中...</div>';
             
             // 重新加载数据
             loadDashboard();
             showNotification('仪表板数据已刷新', 'success');
         }
 
-        function copyApiEndpoint() {
-            const apiEndpoint = document.getElementById('apiEndpoint').textContent;
-            if (apiEndpoint && apiEndpoint !== '-') {
-                navigator.clipboard.writeText(apiEndpoint).then(() => {
-                    showNotification('API端点已复制到剪贴板', 'success');
+        function copyEndpointText(text) {
+            if (text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showNotification('已复制: ' + text, 'success');
                 }).catch(() => {
-                    // 降级方案
                     const textArea = document.createElement('textarea');
-                    textArea.value = apiEndpoint;
+                    textArea.value = text;
                     document.body.appendChild(textArea);
                     textArea.select();
                     document.execCommand('copy');
                     document.body.removeChild(textArea);
-                    showNotification('API端点已复制到剪贴板', 'success');
+                    showNotification('已复制: ' + text, 'success');
                 });
             } else {
-                showNotification('API端点尚未加载', 'warning');
+                showNotification('端点尚未加载', 'warning');
             }
         }
 

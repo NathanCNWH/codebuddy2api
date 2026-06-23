@@ -13,6 +13,8 @@ from src.codebuddy_router import router as codebuddy_router, lifecycle_manager
 from src.codebuddy_auth_router import router as codebuddy_auth_router
 from src.settings_router import router as settings_router
 from src.frontend_router import router as frontend_router
+from src.anthropic_router import router as anthropic_router
+from src.responses_router import router as responses_router
 
 from config import get_server_host, get_server_port, get_log_level
 
@@ -82,6 +84,19 @@ app.include_router(
     tags=["Settings Management"]
 )
 
+# 挂载Anthropic兼容路由 (Claude /v1/messages 格式)
+# 与 CLIProxyAPI 相同的设计：同一后端暴露多种 API 格式
+app.include_router(
+    anthropic_router,
+    tags=["Anthropic Compatible API"]
+)
+
+# 挂载OpenAI Responses兼容路由 (/v1/responses 格式, Codex CLI 使用)
+app.include_router(
+    responses_router,
+    tags=["OpenAI Responses API"]
+)
+
 # 健康检查端点
 @app.get("/health")
 async def health_check():
@@ -95,10 +110,18 @@ async def root():
     return {
         "service": "CodeBuddy2API",
         "version": "1.0.0",
-        "description": "CodeBuddy API proxy with OpenAI-compatible interface",
+        "description": "CodeBuddy API proxy with OpenAI, Anthropic, and Responses API compatible interfaces",
         "endpoints": {
-            "models": "/codebuddy/v1/models",
-            "chat": "/codebuddy/v1/chat/completions",
+            # OpenAI Chat Completions 格式
+            "openai_chat": "/codebuddy/v1/chat/completions",
+            "openai_models": "/codebuddy/v1/models",
+            # OpenAI Responses 格式 (Codex CLI)
+            "responses": "/v1/responses",
+            "responses_models": "/v1/models",
+            # Anthropic 兼容格式
+            "anthropic_messages": "/v1/messages",
+            "anthropic_models": "/v1/models",
+            # 管理接口
             "credentials": "/codebuddy/v1/credentials",
             "auth_start": "/codebuddy/auth/start",
             "auth_poll": "/codebuddy/auth/poll",
@@ -125,13 +148,18 @@ if __name__ == "__main__":
     logger.info(f"   Admin Panel: http://{host}:{port}/")
     logger.info("=" * 60)
     logger.info("API Endpoints:")
-    logger.info(f"   Models: GET http://{host}:{port}/codebuddy/v1/models")
-    logger.info(f"   Chat: POST http://{host}:{port}/codebuddy/v1/chat/completions")
+    logger.info(f"   [OpenAI]         Models: GET  http://{host}:{port}/codebuddy/v1/models")
+    logger.info(f"   [OpenAI]         Chat:   POST http://{host}:{port}/codebuddy/v1/chat/completions")
+    logger.info(f"   [OpenAI Resp.]   Resp:   POST http://{host}:{port}/v1/responses")
+    logger.info(f"   [OpenAI Resp.]   Models: GET  http://{host}:{port}/v1/models")
+    logger.info(f"   [Anthropic]      Msg:    POST http://{host}:{port}/v1/messages")
+    logger.info(f"   [Anthropic]      Models: GET  http://{host}:{port}/v1/models")
     logger.info(f"   Credentials: GET http://{host}:{port}/codebuddy/v1/credentials")
     logger.info("=" * 60)
     logger.info("Authentication:")
     logger.info("   Set CODEBUDDY_PASSWORD environment variable")
-    logger.info("   Use Bearer token in Authorization header")
+    logger.info("   OpenAI/Responses: Use Bearer token in Authorization header")
+    logger.info("   Anthropic:        Use x-api-key header (or Authorization Bearer)")
     logger.info("=" * 60)
 
     config = Config()

@@ -1,11 +1,11 @@
 # CodeBuddy2API
 
-将 CodeBuddy 官方 API 包装成一个功能强大、与 OpenAI API 格式兼容的服务。本项目可以直接调用 CodeBuddy 官方 API，并为所有标准客户端提供统一的接口。
+将 CodeBuddy 官方 API 包装成一个功能强大、与 OpenAI API（Chat Completions + Responses）、Anthropic API 三种格式兼容的服务。本项目可以直接调用 CodeBuddy 官方 API，并为所有标准客户端提供统一的接口。
 
 ## 🌟 功能特性
 
-- 🔌 **OpenAI 兼容接口**：支持标准的 `/v1/chat/completions` API，无缝对接现有生态。
-- 🔄 **智能响应处理**：即使 CodeBuddy 原生仅支持流式响应，本服务也能为客户端智能处理**非流式**请求，并在后端自动完成“流式转非流式”的响应包装。
+- 🔌 **三种 API 格式兼容**：同时支持 OpenAI Chat Completions (`/v1/chat/completions`)、OpenAI Responses (`/v1/responses`，Codex CLI 使用)、Anthropic Messages (`/v1/messages`) 三种 API 格式，无缝对接现有生态。
+- 🔄 **智能响应处理**：即使 CodeBuddy 原生仅支持流式响应，本服务也能为客户端智能处理**非流式**请求，并在后端自动完成"流式转非流式"的响应包装。
 - ⚡ **高性能**：完全基于 FastAPI 和 `asyncio` 构建，支持高并发异步请求。
 - 🔐 **双重认证机制**：
     - **服务访问认证**：通过环境变量设置密码，保护整个代理服务。
@@ -66,11 +66,11 @@ CODEBUDDY_PASSWORD=your_secret_password_for_this_service
 
 1.  启动服务后，使用浏览器访问 `http://127.0.0.1:8001` (或你自定义的地址)。
 2.  输入你在 `.env` 文件中设置的 `CODEBUDDY_PASSWORD` 登录管理面板。
-3.  进入 “**凭证管理**” 标签页。
-4.  点击 **自动获取认证** 卡片中的 “**开始认证**” 按钮。
-5.  系统会自动生成一个 CodeBuddy 的官方登录链接。请点击 “**打开链接**” 按钮。
+3.  进入 "**凭证管理**" 标签页。
+4.  点击 **自动获取认证** 卡片中的 "**开始认证**" 按钮。
+5.  系统会自动生成一个 CodeBuddy 的官方登录链接。请点击 "**打开链接**" 按钮。
 6.  在新打开的 CodeBuddy 页面中完成登录授权。
-7.  **完成！** 登录成功后，请关闭登录页面。本服务会自动检测到登录状态，并为你获取、解析和保存新的认证凭证。你只需点击 “**刷新列表**” 即可看到新添加的凭证。
+7.  **完成！** 登录成功后，请关闭登录页面。本服务会自动检测到登录状态，并为你获取、解析和保存新的认证凭证。你只需点击 "**刷新列表**" 即可看到新添加的凭证。
 
 
 ### 5. 启动服务
@@ -94,11 +94,26 @@ python web.py
 
 ### 认证
 
-所有对本服务的 API 请求，都需要在 HTTP 请求头中包含你在 `.env` 文件里设置的 `CODEBUDDY_PASSWORD` 作为 Bearer Token。
+所有对本服务的 API 请求，都需要在 HTTP 请求头中包含你在 `.env` 文件里设置的 `CODEBUDDY_PASSWORD`。
 
-`Authorization: Bearer your_secret_password_for_this_service`
+> **端点前缀说明**：OpenAI Chat Completions 格式的端点带 `/codebuddy` 前缀（即 `http://127.0.0.1:8001/codebuddy/v1`），而 OpenAI Responses 和 Anthropic 格式的端点无前缀（即 `http://127.0.0.1:8001`）。这是因为不同 SDK 的 `base_url` 拼接方式不同。
+
+- **OpenAI 格式**：使用 `Authorization` 头部
+  ```
+  Authorization: Bearer your_secret_password_for_this_service
+  ```
+- **OpenAI Responses 格式**：使用 `Authorization` 头部
+  ```
+  Authorization: Bearer your_secret_password_for_this_service
+  ```
+- **Anthropic 格式**：使用 `x-api-key` 头部（或 `Authorization: Bearer`）
+  ```
+  x-api-key: your_secret_password_for_this_service
+  ```
 
 ### 客户端集成示例
+
+#### OpenAI 格式
 
 你可以将任何支持 OpenAI API 的客户端指向本服务。
 
@@ -113,7 +128,7 @@ client = openai.OpenAI(
 
 # 非流式请求
 response = client.chat.completions.create(
-    model="auto-chat",
+    model="deepseek-v4-pro",
     messages=[
         {"role": "user", "content": "你好，2+2等于几？"}
     ]
@@ -122,7 +137,7 @@ print(response.choices[0].message.content)
 
 # 流式请求
 stream = client.chat.completions.create(
-    model="auto-chat",
+    model="deepseek-v4-pro",
     messages=[
         {"role": "user", "content": "写一个Python的Hello World脚本"}
     ],
@@ -133,25 +148,64 @@ for chunk in stream:
 
 ```
 
-**curl 命令行示例:**
+#### Anthropic 格式
+
+你可以将任何支持 Anthropic API 的客户端（如 Claude Code、Anthropic SDK）指向本服务。
+
+**Python 客户端 (Anthropic SDK):**
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="your_secret_password_for_this_service",
+    base_url="http://127.0.0.1:8001"
+)
+
+# 非流式请求
+response = client.messages.create(
+    model="deepseek-v4-pro",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "你好，2+2等于几？"}
+    ]
+)
+print(response.content[0].text)
+
+# 流式请求
+with client.messages.stream(
+    model="deepseek-v4-pro",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "写一个Python的Hello World脚本"}
+    ]
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+```
+
+**curl 命令行示例 (Anthropic 格式):**
 ```bash
 # 非流式请求
-curl -X POST "http://127.0.0.1:8001/codebuddy/v1/chat/completions" \
-  -H "Authorization: Bearer your_secret_password_for_this_service" \
+curl -X POST "http://127.0.0.1:8001/v1/messages" \
+  -H "x-api-key: your_secret_password_for_this_service" \
+  -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "auto-chat",
+    "model": "deepseek-v4-pro",
+    "max_tokens": 1024,
     "messages": [
       {"role": "user", "content": "Hello, what is 2+2?"}
     ]
   }'
 
 # 流式请求
-curl -X POST "http://127.0.0.1:8001/codebuddy/v1/chat/completions" \
-  -H "Authorization: Bearer your_secret_password_for_this_service" \
+curl -X POST "http://127.0.0.1:8001/v1/messages" \
+  -H "x-api-key: your_secret_password_for_this_service" \
+  -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "auto-chat",
+    "model": "deepseek-v4-pro",
+    "max_tokens": 1024,
     "messages": [
       {"role": "user", "content": "Write a Python hello world script"}
     ],
@@ -159,13 +213,64 @@ curl -X POST "http://127.0.0.1:8001/codebuddy/v1/chat/completions" \
   }'
 ```
 
+#### OpenAI Responses 格式 (Codex CLI)
+
+你可以将使用 OpenAI Responses API 的客户端（如 Codex CLI）指向本服务。
+
+**curl 命令行示例 (Responses 格式):**
+```bash
+# 非流式请求
+curl -X POST "http://127.0.0.1:8001/v1/responses" \
+  -H "Authorization: Bearer your_secret_password_for_this_service" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-v4-pro",
+    "instructions": "You are a helpful assistant.",
+    "input": [
+      {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello, what is 2+2?"}]}
+    ],
+    "max_output_tokens": 1024
+  }'
+
+# 流式请求
+curl -X POST "http://127.0.0.1:8001/v1/responses" \
+  -H "Authorization: Bearer your_secret_password_for_this_service" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-v4-pro",
+    "instructions": "You are a helpful assistant.",
+    "input": [
+      {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Write a Python hello world script"}]}
+    ],
+    "max_output_tokens": 1024,
+    "stream": true
+  }'
+```
+
 ## 📝 API 端点
 
-- `POST /codebuddy/v1/chat/completions`: 核心接口，用于发送聊天请求。
-- `GET /codebuddy/v1/models`: 获取在 `.env` 文件中配置的模型列表。
-- `GET /codebuddy/v1/credentials`: （需要认证）在 Web UI 中用于列出所有凭证。
-- `POST /codebuddy/v1/credentials`: （需要认证）在 Web UI 中用于添加新凭证。
+本服务同时暴露三种 API 格式，路径前缀不同：
+
+### OpenAI Chat Completions 兼容格式（前缀 `/codebuddy`）
+- `POST /codebuddy/v1/chat/completions`: OpenAI Chat Completions 格式的聊天请求。
+- `GET /codebuddy/v1/models`: 获取可用模型列表。
+- `POST /codebuddy/v1/models/refresh`: （需要认证）从 CodeBuddy 查询真实支持的模型列表并保存。
+- `DELETE /codebuddy/v1/models/refresh`: （需要认证）清除已保存的查询结果，回退到配置的完整列表。
+
+### OpenAI Responses 兼容格式 (Codex CLI，无前缀)
+- `POST /v1/responses`: OpenAI Responses API 格式的聊天请求。
+- `GET /v1/models`: 获取可用模型列表。
+
+### Anthropic 兼容格式（无前缀）
+- `POST /v1/messages`: Anthropic Messages API 格式的聊天请求。
+- `GET /v1/models`: 获取可用模型列表。
+
+### 管理接口
+- `GET /codebuddy/v1/credentials`: （需要认证）列出所有凭证。
+- `POST /codebuddy/v1/credentials`: （需要认证）添加新凭证。
 - `GET /health`: 服务的健康检查端点。
+
+> **提示**：可用模型列表可通过 Web 管理界面（设置标签页 → "可用模型列表"配置项旁的"从CodeBuddy查询"按钮）从 CodeBuddy 实时获取，无需手动维护。
 
 ## 🔧 项目结构
 
@@ -176,7 +281,11 @@ codebuddy2api/
 │   ├── codebuddy_api_client.py    # 封装了与CodeBuddy官方API的通信
 │   ├── codebuddy_auth_router.py   # CodeBuddy OAuth2 认证路由
 │   ├── codebuddy_token_manager.py # CodeBuddy凭证加载与轮换管理器
-│   ├── codebuddy_router.py        # 核心API路由 (v1) - 已重构优化
+│   ├── codebuddy_router.py        # OpenAI Chat Completions API路由 (v1)
+│   ├── anthropic_converter.py     # Anthropic <-> OpenAI 格式转换器
+│   ├── anthropic_router.py        # Anthropic API路由 (/v1/messages)
+│   ├── responses_converter.py     # OpenAI Responses <-> Chat Completions 转换器
+│   ├── responses_router.py        # OpenAI Responses API路由 (/v1/responses)
 │   ├── frontend_router.py         # Web管理界面的路由
 │   ├── settings_router.py         # 设置管理路由
 │   ├── usage_stats_manager.py     # 使用统计管理器
@@ -207,7 +316,7 @@ codebuddy2api/
 | `CODEBUDDY_API_ENDPOINT` | `https://www.codebuddy.cn`| CodeBuddy 官方 API 端点，一般无需修改。 |
 | `CODEBUDDY_CREDS_DIR` | `.codebuddy_creds` | 存放 CodeBuddy 认证凭证的目录。 |
 | `CODEBUDDY_LOG_LEVEL` | `INFO` | 日志级别，可选 `DEBUG`, `INFO`, `WARNING`, `ERROR`。 |
-| `CODEBUDDY_MODELS` | (列表) | 向客户端报告的可用模型列表，用逗号分隔。 |
+| `CODEBUDDY_MODELS` | (列表) | 向客户端报告的可用模型列表，用逗号分隔。可在 Web UI 设置面板点击"从CodeBuddy查询"获取真实模型列表。 |
 | `CODEBUDDY_SSL_VERIFY` | `false` | SSL验证开关，设置为 `true` 启用SSL验证。 |
 | `CODEBUDDY_ROTATION_COUNT` | `10` | 凭证轮换计数，每N次请求后切换凭证。 |
 
